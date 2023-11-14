@@ -4,13 +4,15 @@ import logging
 from flask import Flask,jsonify
 from os.path import exists
 import iperf3
-from multiprocessing import Process
+from multiprocessing import Process, Queue
+import multiprocessing
 import boto3
 import os
 
 # sample server
 
 app = Flask(__name__)
+Q = Queue()
 
 def get_prompt_ip():
     '''
@@ -23,7 +25,6 @@ def get_prompt_ip():
     ddb_response = dynamodb.get_item(TableName=table_name, Key={'EndpointName':{'S':ddb_entry_key}})
     for key in ddb_response['Item']:
         if key != 'EndpointName':
-            print(key)
             return key
 
 def get_prompt_ports():
@@ -53,9 +54,10 @@ def start_bandwidth_test(iperf3_client):
     '''
     Start a bandwidth test that lasts 10 seconds between the iperf3 client and iperf3 server.
     '''
-    print('Starting iperf3 client run on port {0}'.format(iperf3_client.port))
+    print('Starting iperf3 client run on server {0} port {1}'.format(iperf3_client.server_hostname, iperf3_client.port))
     result = iperf3_client.run()
     print('Megabits per second  (Mbps)  {0} for client port {1}'.format(result.received_Mbps, iperf3_client.port))
+    Q.put({"Speed": result.received_Mbps})
 
 @app.route('/invocations', methods=['POST'])
 def serve():
@@ -65,19 +67,22 @@ def serve():
     '''
     procs = []
 
-    # instantiating process with arguments
     for client in get_clients():
-        print("Starting testing on port {}".format(client.port))
         proc = Process(target=start_bandwidth_test, args=[client])
         procs.append(proc)
         proc.start()
 
-    # complete the processes
     for proc in procs:
         proc.join()
 
-    # returns a dummy response. Actual performance testing results can be found in logs.
-    return jsonify({"ExitCode": 0, "Body": "{}"})
+    result = []
+    total_speed = 0
+    for i in range(len(get_prompt_ports())):
+        port_res = Q.get()
+        total_speed += port_res["Speed"]
+
+    total_Gbps = total_speed / 1000 # Gbps to Mbps conversion ratio is 1000, not 1024
+    return jsonify({"Total Bandwidth": "{} Gbps".format(total_Gbps)})
 
 @app.route('/ping', methods=['GET'])
 def ping():
