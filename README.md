@@ -1,21 +1,30 @@
-## Build the container 
+## Build the container
 
 docker build -t sample_ant .
 
 ## Creating a dynamodb table for testing purpose
 
 #### Note DDB table creation  needs to happen before running either container
-aws dynamodb create-table --region us-west-2 --table-name ABCTable --attribute-definitions AttributeName=EndpointName,AttributeType=S --key-schema AttributeName=EndpointName,KeyType=HASH  --billing-mode PAY_PER_REQUEST
+aws dynamodb create-table \
+    --region us-west-2 \
+    --table-name ABCTable \
+    --key-schema \
+        AttributeName=ModelGroup-PrimaryNetworkTopo-shard,KeyType=HASH \
+        AttributeName=IpAddress,KeyType=RANGE \
+    --attribute-definitions \
+        AttributeName=ModelGroup-PrimaryNetworkTopo-shard,AttributeType=S \
+        AttributeName=IpAddress,AttributeType=S \
+    --billing-mode PAY_PER_REQUEST
 
-## Run locally 
+## Run locally
 
-docker run -p 8080:8080 -e ROUTING_TABLE_NAME=ABCTable -e ROUTING_ENTRY_KEY=xyzEp  -e AWS_ACCESS_KEY_ID=<your-key> -e AWS_SECRET_ACCESS_KEY=<your-secret> sample_ant 
+docker run -p 8080:8080 -e ROUTING_TABLE_NAME=ABCTable -e ROUTING_ENTRY_KEY=xyzEp -e AWS_AVAILABILITY_ZONE=us-west-2b -e AWS_NETWORK_NODES='nn-0,nn-1,nn-2' -e AWS_ACCESS_KEY_ID=<your-key> -e AWS_SECRET_ACCESS_KEY=<your-secret> sample_ant
 
-## Test invoke 
+## Test invoke
 
 curl -X POST localhost:8080/invocations
 
-you should see something like 
+you should see something like
 ```
 Starting testing on port 5001
 Starting testing on port 5002

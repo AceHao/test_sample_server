@@ -1,4 +1,5 @@
 import subprocess
+import time
 import flask
 import logging
 from flask import Flask,jsonify
@@ -14,18 +15,42 @@ import os
 app = Flask(__name__)
 Q = Queue()
 
-def get_prompt_ip():
+def get_primary_prompt_ip():
     '''
     Implements a very simple method to retrieve an idle prompt server ready to take traffic.
-    TODO: a prod-ready example for idle ip retrieval, based on dynamoDB, will be provided in next iteration.
     '''
     table_name = os.environ['ROUTING_TABLE_NAME']
     ddb_entry_key = os.environ['ROUTING_ENTRY_KEY']
+    az = os.environ['AWS_AVAILABILITY_ZONE']
+    network_nodes = os.environ['AWS_NETWORK_NODES']
+    topology = network_nodes.split(', ')
+    spine = topology[0]
+
     dynamodb = boto3.client('dynamodb', region_name='us-west-2')
-    ddb_response = dynamodb.get_item(TableName=table_name, Key={'EndpointName':{'S':ddb_entry_key}})
-    for key in ddb_response['Item']:
-        if key != 'EndpointName':
-            return key
+    ddb_response = dynamodb.query(
+        TableName=table_name,
+        Select='ALL_ATTRIBUTES',
+        Limit=100,
+        ConsistentRead=True,
+        KeyConditionExpression='#pk = :pkv',
+        FilterExpression='(#r = :r OR #rt < :now) AND #ttl >= :now AND #azid = :az AND contains(#spine, :spine)',
+        ExpressionAttributeNames={
+            '#pk': 'ModelGroup-PrimaryNetworkTopo-shard',
+            '#r': 'Reserved',
+            '#ttl': 'TimeToLive',
+            '#rt': 'ReservationTimeout',
+            '#azid': 'AzId',
+            '#spine': 'NetworkNodes'
+        },
+        ExpressionAttributeValues={
+            ':pkv': { 'S': ddb_entry_key },
+            ':r': { 'N': '0' },
+            ':now': { 'N': str(int(time.time())) },
+            ':az': { 'S': az },
+            ':spine': { 'S': spine }
+        }
+    )
+    return [{'key': item['EndpointName-Az-spine-partition']['S'], 'ipaddr': item['IpAddress']['S']} for item in ddb_response['Items']]
 
 def get_prompt_ports():
     '''
@@ -40,7 +65,7 @@ def get_clients():
     clients = []
     for port in get_prompt_ports():
         client = iperf3.Client()
-        client.server_hostname = get_prompt_ip()
+        client.server_hostname = get_primary_prompt_ip()
         client.zerocopy = True
         client.verbose = True
         client.reverse = True
