@@ -5,6 +5,7 @@ docker build -t sample_ant .
 ## Creating a dynamodb table for testing purpose
 
 #### Note DDB table creation  needs to happen before running either container
+```
 aws dynamodb create-table \
     --region us-west-2 \
     --table-name ABCTable \
@@ -15,6 +16,7 @@ aws dynamodb create-table \
         AttributeName=ModelGroup-PrimaryNetworkTopo-shard,AttributeType=S \
         AttributeName=IpAddress,AttributeType=S \
     --billing-mode PAY_PER_REQUEST
+```
 
 ## Run locally
 
