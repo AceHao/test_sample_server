@@ -19,6 +19,8 @@ COPY gunicorn_conf.py /app/
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY serve /
 
+LABEL com.amazonaws.sagemaker.capabilities.accept-bind-to-port=true
+
 RUN chmod 777 /serve
 
 ENTRYPOINT ["/serve"]
